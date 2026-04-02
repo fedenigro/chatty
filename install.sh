@@ -2,93 +2,62 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║               Chatty — one-command installer                 ║
 # ║                                                              ║
-# ║  curl -fsSL https://your-link/install.sh | bash             ║
-# ║   — or —                                                     ║
-# ║  bash install.sh                                             ║
+# ║  curl -fsSL https://raw.githubusercontent.com/fedenigro/   ║
+# ║             chatty/main/install.sh | bash                   ║
 # ╚══════════════════════════════════════════════════════════════╝
-#
-# What this does:
-#   1. Installs Homebrew (if missing)
-#   2. Installs Python 3.12 + ffmpeg via Homebrew
-#   3. Copies app files to ~/.chatty/
-#   4. Installs all Python dependencies
-#   5. Builds Chatty.app and puts it in /Applications
-#
-# Requirements: macOS 12+, internet connection (first run only)
-
 set -euo pipefail
 
+REPO="fedenigro/chatty"
+BRANCH="main"
+INSTALL_DIR="$HOME/.chatty"
+APP_NAME="Chatty"
+
 # ── Colours ───────────────────────────────────────────────────────────────────
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'
+BOLD='\033[1m'; NC='\033[0m'
 info()    { echo -e "${BLUE}→${NC}  $*"; }
 success() { echo -e "${GREEN}✔${NC}  $*"; }
-warn()    { echo -e "${YELLOW}⚠${NC}  $*"; }
-die()     { echo -e "${RED}✘${NC}  $*" >&2; exit 1; }
+die()     { echo -e "\033[0;31m✘${NC}  $*" >&2; exit 1; }
 header()  { echo -e "\n${BOLD}$*${NC}"; }
 
-# ── macOS guard ───────────────────────────────────────────────────────────────
 [[ "$(uname)" == "Darwin" ]] || die "Chatty requires macOS."
 
 header "🎙  Chatty Installer"
 echo ""
 
-# ── Locate project source ─────────────────────────────────────────────────────
-# If run via "curl | bash" there is no __file__; fall back to cwd.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$PWD}")" 2>/dev/null && pwd || echo "$PWD")"
-# Verify it looks like the Chatty source folder
-if [[ ! -f "$SCRIPT_DIR/app.py" ]]; then
-    die "install.sh must be run from the Chatty project folder (the one containing app.py)."
-fi
-
-INSTALL_DIR="$HOME/.chatty"
-APP_NAME="Chatty"
-
 # ── 1. Homebrew ───────────────────────────────────────────────────────────────
 header "Step 1 — Homebrew"
-if command -v brew &>/dev/null; then
-    success "Homebrew already installed ($(brew --version | head -1))"
-else
+if ! command -v brew &>/dev/null; then
     info "Installing Homebrew …"
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    # Add brew to PATH for this session (Apple Silicon vs Intel)
-    if [[ -f /opt/homebrew/bin/brew ]]; then
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-    else
-        eval "$(/usr/local/bin/brew shellenv)"
-    fi
-    success "Homebrew installed."
+    [[ -f /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)" \
+                                    || eval "$(/usr/local/bin/brew shellenv)"
 fi
+success "Homebrew ready."
 
 # ── 2. ffmpeg ─────────────────────────────────────────────────────────────────
 header "Step 2 — ffmpeg"
-if command -v ffmpeg &>/dev/null; then
-    success "ffmpeg already installed."
-else
+if ! command -v ffmpeg &>/dev/null; then
     info "Installing ffmpeg …"
     brew install ffmpeg
-    success "ffmpeg installed."
 fi
+success "ffmpeg ready."
 
-# ── 3. Python 3.12 ───────────────────────────────────────────────────────────
+# ── 3. Python ─────────────────────────────────────────────────────────────────
 header "Step 3 — Python 3.12"
 PYTHON=""
-# Prefer homebrew python for a clean, relocatable install
 for candidate in \
-    "$(brew --prefix)/bin/python3.13" \
-    "$(brew --prefix)/bin/python3.12" \
-    "$(brew --prefix)/bin/python3.11" \
-    "$(brew --prefix)/bin/python3" \
-    "$(command -v python3.13 2>/dev/null)" \
-    "$(command -v python3.12 2>/dev/null)" \
-    "$(command -v python3 2>/dev/null)"
+    "$(brew --prefix 2>/dev/null)/bin/python3.13" \
+    "$(brew --prefix 2>/dev/null)/bin/python3.12" \
+    "$(brew --prefix 2>/dev/null)/bin/python3.11" \
+    "$(brew --prefix 2>/dev/null)/bin/python3" \
+    "$(command -v python3.13 2>/dev/null || true)" \
+    "$(command -v python3.12 2>/dev/null || true)" \
+    "$(command -v python3    2>/dev/null || true)"
 do
-    if [[ -x "$candidate" ]]; then
-        VER="$("$candidate" -c 'import sys; print(sys.version_info[:2])')"
-        if python3 -c "assert $VER >= (3,10)" 2>/dev/null; then
-            PYTHON="$candidate"
-            break
-        fi
+    if [[ -x "$candidate" ]] && "$candidate" -c \
+        "import sys; assert sys.version_info>=(3,10)" 2>/dev/null; then
+        PYTHON="$candidate"; break
     fi
 done
 
@@ -97,49 +66,55 @@ if [[ -z "$PYTHON" ]]; then
     brew install python@3.12
     PYTHON="$(brew --prefix)/bin/python3.12"
 fi
-
 PYTHON="$(realpath "$PYTHON")"
 success "Python: $PYTHON ($("$PYTHON" --version))"
 
-# ── 4. Copy app files ─────────────────────────────────────────────────────────
-header "Step 4 — Copy app files → $INSTALL_DIR"
+# ── 4. Download app files from GitHub ────────────────────────────────────────
+header "Step 4 — Download Chatty files"
 mkdir -p "$INSTALL_DIR/assets"
 
-FILES=(app.py recorder.py transcriber.py paste.py overlay.py config.py)
+BASE="https://raw.githubusercontent.com/$REPO/$BRANCH"
+
+FILES=(
+    app.py recorder.py transcriber.py
+    paste.py overlay.py config.py
+    build_app.sh
+)
 for f in "${FILES[@]}"; do
-    cp "$SCRIPT_DIR/$f" "$INSTALL_DIR/$f"
+    info "Downloading $f …"
+    curl -fsSL "$BASE/$f" -o "$INSTALL_DIR/$f"
 done
-cp -r "$SCRIPT_DIR/assets/"* "$INSTALL_DIR/assets/"
-success "App files copied."
+
+for asset in mic_on.svg mic_off.svg; do
+    info "Downloading assets/$asset …"
+    curl -fsSL "$BASE/assets/$asset" -o "$INSTALL_DIR/assets/$asset"
+done
+
+chmod +x "$INSTALL_DIR/build_app.sh"
+success "Files downloaded to $INSTALL_DIR"
 
 # ── 5. Python dependencies ────────────────────────────────────────────────────
 header "Step 5 — Python dependencies"
-info "This may take a few minutes on the first run (torch + whisper are large) …"
+info "Installing packages (torch + whisper may take a few minutes) …"
 "$PYTHON" -m pip install --upgrade pip --quiet
 "$PYTHON" -m pip install \
-    rumps \
-    pynput \
-    sounddevice \
-    numpy \
+    rumps pynput sounddevice numpy \
     openai-whisper \
-    pyobjc-core \
-    pyobjc-framework-Cocoa \
-    pyobjc-framework-Quartz \
-    pyperclip \
-    cairosvg \
+    pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-Quartz \
+    pyperclip cairosvg \
     --quiet
 success "Dependencies installed."
 
-# ── 6. Build & install Chatty.app ────────────────────────────────────────────
+# ── 6. Build & install Chatty.app ─────────────────────────────────────────────
 header "Step 6 — Build Chatty.app"
-bash "$SCRIPT_DIR/build_app.sh" --python "$PYTHON" --source "$INSTALL_DIR"
+bash "$INSTALL_DIR/build_app.sh" --python "$PYTHON" --source "$INSTALL_DIR"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}${BOLD}✅  Chatty is installed!${NC}"
 echo ""
-echo "  Launch:      ⌘ Space → type 'Chatty' → Enter"
-echo "  Use:         Press Cmd+Shift+Space to start/stop dictation"
+echo "  Launch:  ⌘ Space → type 'Chatty' → Enter"
+echo "  Use:     Press Cmd+Shift+Space to start / stop dictation"
 echo ""
 echo -e "${YELLOW}First launch:${NC} macOS will ask for Accessibility + Microphone permissions."
 echo "  Go to System Settings → Privacy & Security and enable both for Chatty."
