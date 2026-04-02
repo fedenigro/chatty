@@ -31,7 +31,7 @@ ICON_RECORDING = os.path.join(_DIR, "assets", "mic_on.png")
 
 class ChattyApp(rumps.App):
     def __init__(self, cfg: dict):
-        super().__init__("Chatty", icon=ICON_IDLE, template=True, quit_button=None)
+        super().__init__("🎙", icon=None, quit_button=None)
         self.cfg = cfg
 
         self.recorder    = Recorder()
@@ -145,8 +145,7 @@ class ChattyApp(rumps.App):
             self._start_recording()
 
     def _start_recording(self):
-        self.icon = ICON_RECORDING
-        self.template = False   # keep green colour on recording icon
+        self.title = "🔴"
         self.toggle_item.title = "Stop Recording"
         self._set_status("Recording…")
         self.recorder.start()
@@ -154,8 +153,7 @@ class ChattyApp(rumps.App):
 
     def _stop_recording(self):
         """Confirm — stop, transcribe, paste."""
-        self.icon = ICON_IDLE
-        self.template = True    # back to adaptive template icon
+        self.title = "🎙"
         self.toggle_item.title = "Start Recording"
         self._set_status("Transcribing…")
         self._want_hide_overlay = True
@@ -163,8 +161,7 @@ class ChattyApp(rumps.App):
 
     def _cancel_recording(self):
         """Cancel — stop and discard audio, no transcription."""
-        self.icon = ICON_IDLE
-        self.template = True
+        self.title = "🎙"
         self.toggle_item.title = "Start Recording"
         self._set_status("Cancelled.")
         self._want_hide_overlay = True
