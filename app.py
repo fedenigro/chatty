@@ -12,11 +12,21 @@ First run:
 Then grant Accessibility + Microphone permissions when prompted.
 """
 
+import logging
 import os
 import threading
 import time
 
 import rumps
+
+# Log to ~/Library/Logs/Chatty.log so errors are always visible
+_LOG_PATH = os.path.expanduser("~/Library/Logs/Chatty.log")
+logging.basicConfig(
+    filename=_LOG_PATH,
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+log = logging.getLogger("chatty")
 
 import config
 import paste
@@ -168,21 +178,33 @@ class ChattyApp(rumps.App):
         threading.Thread(target=self.recorder.stop, daemon=True).start()
 
     def _transcribe(self):
+        log.info("Transcription started")
         audio_buf = self.recorder.stop()
         if audio_buf is None:
+            log.warning("No audio captured")
             self._set_status("No audio captured.")
             return
 
         try:
+            log.info("Running Whisper…")
             text = self.transcriber.transcribe(audio_buf, self.cfg.get("language"))
+            log.info("Whisper result: %r", text)
         except Exception as exc:
+            log.exception("Transcription error")
             self._set_status(f"Error: {exc}")
             return
 
         if text:
-            paste.paste_text(text)
-            self._set_status(f"Pasted: {text[:60]}{'…' if len(text) > 60 else ''}")
+            from ApplicationServices import AXIsProcessTrusted
+            try:
+                paste.paste_text(text)
+                log.info("Pasted OK, trusted=%s", AXIsProcessTrusted())
+            except Exception as exc:
+                log.exception("Paste error")
+            verb = "Pasted" if AXIsProcessTrusted() else "Copied (grant Accessibility to auto-paste)"
+            self._set_status(f"{verb}: {text[:50]}{'…' if len(text) > 50 else ''}")
         else:
+            log.info("Nothing transcribed")
             self._set_status("Nothing transcribed.")
 
     # ------------------------------------------------------------------
@@ -236,8 +258,10 @@ class ChattyApp(rumps.App):
         return cb
 
     def _load_model(self):
+        log.info("Loading Whisper model: %s", self.cfg['model'])
         self._set_status(f"Loading {self.cfg['model']} model…")
         self.transcriber.load()
+        log.info("Whisper model ready")
         self._set_status("Ready.")
 
     def _reload_model(self, model_name: str):
@@ -256,7 +280,17 @@ class ChattyApp(rumps.App):
         return hotkey.replace("<", "").replace(">", "").replace("+", " + ")
 
 
+def _request_accessibility() -> None:
+    """Prompt macOS to show the Accessibility permission dialog if not yet granted."""
+    from ApplicationServices import AXIsProcessTrustedWithOptions
+    opts = {"AXTrustedCheckOptionPrompt": True}
+    trusted = AXIsProcessTrustedWithOptions(opts)
+    log.info("AXIsProcessTrusted at launch: %s", trusted)
+
+
 def main():
+    log.info("Chatty starting up")
+    _request_accessibility()
     cfg = config.load()
     app = ChattyApp(cfg)
     app.run()
