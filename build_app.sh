@@ -47,6 +47,11 @@ if [[ -z "$PYTHON" ]]; then
     exit 1
 fi
 
+# Resolve pyenv shims → real binary so the .app works without a shell environment
+if [[ "$PYTHON" == *"/shims/"* ]]; then
+    REAL="$(PYENV_VERSION="" "$PYTHON" -c 'import sys; print(sys.executable)' 2>/dev/null || true)"
+    [[ -x "$REAL" ]] && PYTHON="$REAL"
+fi
 PYTHON="$(realpath "$PYTHON")"
 echo "✔  Python: $PYTHON"
 echo "✔  Source: $SOURCE_DIR"
