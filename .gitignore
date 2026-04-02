@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# App bundle (built locally — not committed)
+Chatty.app/
+*.app/
+*.icns
+_build_iconset.iconset/
+
+# Whisper model cache
+~/.cache/whisper/
+
+# User config (contains personal shortcut preferences)
+~/.config/whisper-dictation/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Env / secrets
+.env
+*.pem
