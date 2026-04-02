@@ -93,6 +93,21 @@ done
 chmod +x "$INSTALL_DIR/build_app.sh"
 success "Files downloaded to $INSTALL_DIR"
 
+# ── 4b. Generate PNGs from SVGs (required by the app at runtime) ──────────────
+info "Generating icon PNGs from SVGs …"
+"$PYTHON" - "$INSTALL_DIR" <<'PYICON'
+import sys, os
+import cairosvg
+d = sys.argv[1]
+cairosvg.svg2png(url=os.path.join(d,"assets","mic_on.svg"),
+                 write_to=os.path.join(d,"assets","mic_on.png"),
+                 output_width=44, output_height=44)
+cairosvg.svg2png(url=os.path.join(d,"assets","mic_off.svg"),
+                 write_to=os.path.join(d,"assets","mic_off.png"),
+                 output_width=44, output_height=44)
+print("  PNGs written")
+PYICON
+
 # ── 5. Python dependencies ────────────────────────────────────────────────────
 header "Step 5 — Python dependencies"
 info "Installing packages (torch + whisper may take a few minutes) …"

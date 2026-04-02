@@ -56,6 +56,19 @@ PYTHON="$(realpath "$PYTHON")"
 echo "✔  Python: $PYTHON"
 echo "✔  Source: $SOURCE_DIR"
 
+# ── Generate PNGs (needed by the app at runtime) ─────────────────────────────
+echo "→  Generating icon PNGs …"
+"$PYTHON" - "$SOURCE_DIR" <<'PYICON'
+import sys, os, cairosvg
+d = sys.argv[1]
+cairosvg.svg2png(url=os.path.join(d,"assets","mic_on.svg"),
+                 write_to=os.path.join(d,"assets","mic_on.png"),
+                 output_width=44, output_height=44)
+cairosvg.svg2png(url=os.path.join(d,"assets","mic_off.svg"),
+                 write_to=os.path.join(d,"assets","mic_off.png"),
+                 output_width=44, output_height=44)
+PYICON
+
 # ── Scaffold .app ─────────────────────────────────────────────────────────────
 APP_NAME="Chatty"
 APP="$SOURCE_DIR/$APP_NAME.app"
