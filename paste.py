@@ -6,7 +6,7 @@ from Quartz import (
     CGEventPost,
     CGEventSetFlags,
     kCGEventFlagMaskCommand,
-    kCGSessionEventTap,
+    kCGHIDEventTap,
 )
 from ApplicationServices import AXIsProcessTrusted
 
@@ -30,5 +30,5 @@ def _cmd_v() -> None:
     key_up   = CGEventCreateKeyboardEvent(None, _KEY_V, False)
     CGEventSetFlags(key_down, kCGEventFlagMaskCommand)
     CGEventSetFlags(key_up,   kCGEventFlagMaskCommand)
-    CGEventPost(kCGSessionEventTap, key_down)
-    CGEventPost(kCGSessionEventTap, key_up)
+    CGEventPost(kCGHIDEventTap, key_down)
+    CGEventPost(kCGHIDEventTap, key_up)

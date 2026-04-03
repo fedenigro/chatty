@@ -60,13 +60,26 @@ echo "✔  Source: $SOURCE_DIR"
 echo "→  Generating icon PNGs …"
 "$PYTHON" - "$SOURCE_DIR" <<'PYICON'
 import sys, os, cairosvg
+from PIL import Image
 d = sys.argv[1]
+
+# mic_on: keep original colours (green), 36px = 18pt @2x
 cairosvg.svg2png(url=os.path.join(d,"assets","mic_on.svg"),
                  write_to=os.path.join(d,"assets","mic_on.png"),
-                 output_width=44, output_height=44)
-cairosvg.svg2png(url=os.path.join(d,"assets","mic_off.svg"),
+                 output_width=36, output_height=36)
+
+# mic_off (idle): gray (#555) — visible on both light and dark menu bars
+svg_off = os.path.join(d,"assets","mic_off.svg")
+with open(svg_off) as f:
+    svg_data = f.read().replace('fill="white"', 'fill="#555555"')
+cairosvg.svg2png(bytestring=svg_data.encode(),
                  write_to=os.path.join(d,"assets","mic_off.png"),
-                 output_width=44, output_height=44)
+                 output_width=36, output_height=36)
+
+# Set DPI to 144 so macOS interprets 36px as 18pt (correct menu bar size)
+for name in ("mic_off.png", "mic_on.png"):
+    p = os.path.join(d, "assets", name)
+    Image.open(p).save(p, dpi=(144, 144))
 PYICON
 
 # ── Scaffold .app ─────────────────────────────────────────────────────────────

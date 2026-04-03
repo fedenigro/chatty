@@ -17,6 +17,12 @@ import os
 import threading
 import time
 
+# Ensure Homebrew binaries (ffmpeg, etc.) are on PATH even when launched
+# from a .app bundle which doesn't inherit the user's shell environment.
+for _brew_bin in ("/opt/homebrew/bin", "/usr/local/bin"):
+    if _brew_bin not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _brew_bin + ":" + os.environ.get("PATH", "")
+
 import rumps
 
 # Log to ~/Library/Logs/Chatty.log so errors are always visible
@@ -39,10 +45,24 @@ ICON_IDLE      = os.path.join(_DIR, "assets", "mic_off.png")
 ICON_RECORDING = os.path.join(_DIR, "assets", "mic_on.png")
 
 
+def _load_nsimage(path, template=False):
+    """Load a PNG as an NSImage sized correctly for the menu bar (18pt)."""
+    from AppKit import NSImage, NSSize
+    img = NSImage.alloc().initWithContentsOfFile_(path)
+    if img:
+        img.setSize_(NSSize(18, 18))
+        img.setTemplate_(template)
+        log.info("Loaded NSImage from %s: %s reps", path, img.representations().count())
+    return img
+
+
 class ChattyApp(rumps.App):
     def __init__(self, cfg: dict):
-        super().__init__("🎙", icon=None, quit_button=None)
+        super().__init__("Chatty", quit_button=None)
         self.cfg = cfg
+        self._idle_image = _load_nsimage(ICON_IDLE, template=False)
+        self._rec_image  = _load_nsimage(ICON_RECORDING, template=False)
+        self._icon_applied = False
 
         self.recorder    = Recorder()
         self.transcriber = Transcriber(cfg["model"])
@@ -111,6 +131,22 @@ class ChattyApp(rumps.App):
     # ------------------------------------------------------------------
 
     def _main_thread_tick(self, _timer):
+        # One-shot: apply the mic icon once the NSStatusItem exists
+        if not self._icon_applied:
+            try:
+                nsitem = self._nsapp.nsstatusitem
+                btn = nsitem.button()
+                btn.setImage_(self._idle_image)
+                # Check if image actually stuck
+                actual = btn.image()
+                if actual:
+                    btn.setTitle_("")  # clear text only if icon is showing
+                    log.info("Icon set, size=%s, template=%s", actual.size(), actual.isTemplate())
+                else:
+                    log.warning("setImage_ called but image is None!")
+                self._icon_applied = True
+            except (AttributeError, Exception):
+                pass  # nsstatusitem not ready yet; will retry next tick
         if self._want_show_overlay:
             self._want_show_overlay = False
             self.overlay.show()
@@ -154,8 +190,15 @@ class ChattyApp(rumps.App):
         else:
             self._start_recording()
 
+    def _apply_icon(self, nsimage):
+        """Set the NSStatusItem image via the button API (macOS 10.14+)."""
+        try:
+            self._nsapp.nsstatusitem.button().setImage_(nsimage)
+        except (AttributeError, Exception):
+            pass
+
     def _start_recording(self):
-        self.title = "🔴"
+        self._apply_icon(self._rec_image)
         self.toggle_item.title = "Stop Recording"
         self._set_status("Recording…")
         self.recorder.start()
@@ -163,7 +206,7 @@ class ChattyApp(rumps.App):
 
     def _stop_recording(self):
         """Confirm — stop, transcribe, paste."""
-        self.title = "🎙"
+        self._apply_icon(self._idle_image)
         self.toggle_item.title = "Start Recording"
         self._set_status("Transcribing…")
         self._want_hide_overlay = True
@@ -171,7 +214,7 @@ class ChattyApp(rumps.App):
 
     def _cancel_recording(self):
         """Cancel — stop and discard audio, no transcription."""
-        self.title = "🎙"
+        self._apply_icon(self._idle_image)
         self.toggle_item.title = "Start Recording"
         self._set_status("Cancelled.")
         self._want_hide_overlay = True
